@@ -51,20 +51,39 @@ DB._initSupabase = function (fiscaisIniciais) {
 
 /** Carrega os dados da tabela e assina mudanças em tempo real (Realtime) */
 DB._subscribeSupabase = function (tabela) {
-  const recarregar = () => {
-    this._sb.from(tabela).select("data").then(({ data, error }) => {
+  const TAMANHO_PAGINA = 1000; // o Supabase só devolve até 1000 linhas por vez — buscamos em páginas até pegar tudo
+
+  const recarregar = async () => {
+    let todos = [];
+    let pagina = 0;
+    while (true) {
+      const { data, error } = await this._sb.from(tabela).select("data").range(pagina * TAMANHO_PAGINA, (pagina + 1) * TAMANHO_PAGINA - 1);
       if (error) { console.error(`Erro ao ler "${tabela}":`, error); return; }
-      this._cache[tabela] = data.map(linha => linha.data);
-      if (tabela === "fiscais") this._marcarPronto();
-      window.dispatchEvent(new CustomEvent("db:changed", { detail: { key: tabela } }));
-    });
+      todos = todos.concat(data.map(linha => linha.data));
+      if (data.length < TAMANHO_PAGINA) break;
+      pagina++;
+    }
+    this._cache[tabela] = todos;
+    if (tabela === "fiscais") this._marcarPronto();
+    window.dispatchEvent(new CustomEvent("db:changed", { detail: { key: tabela } }));
   };
 
-  recarregar(); // carga inicial
+  // Uma importação grande (ex: planilha com milhares de linhas) dispara um
+  // evento de tempo real PARA CADA LINHA alterada — sem essa "espera",
+  // isso recarregaria a tabela inteira centenas/milhares de vezes seguidas
+  // e travaria o navegador. Com o debounce, só recarrega uma vez, pouco
+  // depois da última mudança.
+  let debounceTimer = null;
+  const recarregarComEspera = () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(recarregar, 400);
+  };
+
+  recarregar(); // carga inicial (sem espera)
 
   this._sb
     .channel(`realtime:${tabela}`)
-    .on("postgres_changes", { event: "*", schema: "public", table: tabela }, recarregar)
+    .on("postgres_changes", { event: "*", schema: "public", table: tabela }, recarregarComEspera)
     .subscribe();
 };
 

@@ -308,6 +308,13 @@ const DB = {
     }
     if (this.mode === "supabase") {
       this._supabaseUpsertBatch("producao", registros);
+      // Atualiza a cache local na hora (não espera o "tempo real" avisar) —
+      // pra quem acabou de importar já ver os dados na tela imediatamente,
+      // mesmo com bases grandes (milhares de linhas).
+      const mapa = new Map((this._cache.producao || []).map(r => [r.id, r]));
+      registros.forEach(r => mapa.set(r.id, r));
+      this._cache.producao = [...mapa.values()];
+      window.dispatchEvent(new CustomEvent("db:changed", { detail: { key: "producao" } }));
       return registros.length;
     }
     // Demo → IndexedDB. Atualiza a cache imediatamente (a tela já reflete
