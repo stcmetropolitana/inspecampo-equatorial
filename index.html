@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>InspeCampo · Sistema de Inspeção de Equipes</title>
+
+<!-- Fontes -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+
+<!-- Ícones -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+
+<!-- Alertas -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sweetalert2/11.12.3/sweetalert2.all.min.js"></script>
+
+<!-- Gráficos -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.3/chart.umd.min.js"></script>
+
+<!-- Mapa -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
+<!-- Exportação -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<!--
+  ==========================================================================
+  BACKEND ONLINE — SDKs prontos para uso (Firebase e/ou Supabase). Para
+  ativar o modo online com dados compartilhados em tempo real, veja
+  DEPLOY.md (Firebase) ou SUPABASE.md (Supabase) na raiz do projeto.
+  ==========================================================================
+-->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- =========================================================
+     TELA DE LOGIN
+========================================================= -->
+<div id="loginScreen" class="login-screen">
+  <div class="login-visual">
+    <svg class="grid-lines" viewBox="0 0 600 800" preserveAspectRatio="xMidYMid slice">
+      <g stroke="#3E7DD1" stroke-width="1.2" opacity="0.5" fill="none">
+        <path d="M0,120 H160 V260 H340 V90 H600"></path>
+        <path d="M0,340 H90 V480 H260 V620 H600"></path>
+        <path d="M60,0 V180 H220 V400"></path>
+        <path d="M480,0 V150 H600"></path>
+        <path d="M0,620 H130 V800"></path>
+        <path d="M380,800 V680 H600"></path>
+      </g>
+      <g fill="#00C2A8">
+        <circle cx="160" cy="120" r="4"><animate attributeName="opacity" values="1;0.2;1" dur="2.6s" repeatCount="indefinite"/></circle>
+        <circle cx="340" cy="260" r="4"><animate attributeName="opacity" values="0.3;1;0.3" dur="3.1s" repeatCount="indefinite"/></circle>
+        <circle cx="90" cy="340" r="4"><animate attributeName="opacity" values="1;0.3;1" dur="2.2s" repeatCount="indefinite"/></circle>
+        <circle cx="260" cy="480" r="4"><animate attributeName="opacity" values="0.2;1;0.2" dur="2.9s" repeatCount="indefinite"/></circle>
+        <circle cx="220" cy="180" r="4"><animate attributeName="opacity" values="1;0.2;1" dur="3.4s" repeatCount="indefinite"/></circle>
+        <circle cx="480" cy="150" r="4"><animate attributeName="opacity" values="0.4;1;0.4" dur="2.4s" repeatCount="indefinite"/></circle>
+        <circle cx="130" cy="620" r="4"><animate attributeName="opacity" values="1;0.3;1" dur="2.7s" repeatCount="indefinite"/></circle>
+        <circle cx="380" cy="680" r="4"><animate attributeName="opacity" values="0.3;1;0.3" dur="3.2s" repeatCount="indefinite"/></circle>
+      </g>
+    </svg>
+
+    <div class="brand-mark"><span class="dot"></span> InspeCampo</div>
+
+    <div class="headline">
+      <h1>Inspeção de equipes de campo, em tempo real.</h1>
+      <p>Fiscalização digital de equipes emergenciais e comerciais — do celular do fiscal direto para o painel do gestor, sem papel e sem atraso.</p>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat"><b id="statFiscais">12</b><span>Fiscais</span></div>
+      <div class="stat"><b id="statLideres">2</b><span>Líderes</span></div>
+      <div class="stat"><b>&lt; 3 min</b><span>Por inspeção</span></div>
+    </div>
+  </div>
+
+  <div class="login-form-wrap">
+    <div class="login-card fade-in">
+      <h2>Acessar o sistema</h2>
+      <p class="sub">Entre com sua matrícula Equatorial.</p>
+
+      <form id="loginForm" novalidate>
+        <div class="field" id="fieldMatricula">
+          <label for="inputMatricula">Matrícula</label>
+          <input id="inputMatricula" type="text" placeholder="Ex: EQT20000" autocomplete="off">
+          <div class="error-msg">Matrícula não encontrada. Confira e tente novamente.</div>
+        </div>
+        <div class="field" id="fieldSenha">
+          <label for="inputSenha">Senha</label>
+          <input id="inputSenha" type="password" placeholder="••••" autocomplete="off">
+          <div class="error-msg">Senha incorreta. Tente novamente.</div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block"><i class="fa-solid fa-right-to-bracket"></i> Entrar</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- =========================================================
+     APLICAÇÃO
+========================================================= -->
+<div id="appShell" class="app-shell hidden">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand"><span class="dot"></span> InspeCampo</div>
+    <nav id="navMenu"></nav>
+    <div class="user-box">
+      <div class="avatar" id="userAvatar">--</div>
+      <div class="info">
+        <b id="userName">—</b>
+        <span id="userRole">—</span>
+      </div>
+      <button title="Alterar senha" id="btnChangePassword"><i class="fa-solid fa-key"></i></button>
+      <button title="Sair" id="btnLogout"><i class="fa-solid fa-arrow-right-from-bracket"></i></button>
+    </div>
+  </aside>
+
+  <div class="main-area">
+    <header class="topbar">
+      <div class="flex items-center gap-8">
+        <button class="menu-toggle" id="menuToggle"><i class="fa-solid fa-bars"></i></button>
+        <h1 id="pageTitle">Dashboard</h1>
+      </div>
+      <div class="right">
+        <div class="live-badge"><span class="pulse-dot"></span> Ao vivo</div>
+        <span class="text-muted mono" id="clockNow" style="font-size:.82rem;"></span>
+      </div>
+    </header>
+
+    <main class="content" id="pageContent"></main>
+  </div>
+</div>
+
+<!-- Templates de página (usados pelo router em js/app.js) -->
+<template id="tpl-modal-photo">
+  <div class="modal-overlay" data-role="photo-overlay">
+    <div class="lightbox-img-wrap">
+      <img src="" alt="Foto ampliada">
+    </div>
+  </div>
+</template>
+
+<script src="js/firebase-config.js"></script>
+<script src="js/supabase-config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/analises.js"></script>
+<script src="js/usuarios.js"></script>
+<script src="js/cadastro.js"></script>
+<script src="js/inspection.js"></script>
+<script src="js/dashboard.js"></script>
+<script src="js/lider.js"></script>
+<script src="js/history.js"></script>
+<script src="js/gallery.js"></script>
+<script src="js/export.js"></script>
+<script src="js/painel-fiscal.js"></script>
+<script src="js/producao.js"></script>
+<script src="js/ordens.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
