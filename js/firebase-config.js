@@ -93,6 +93,7 @@ const FIREBASE_CONFIG = {
 
 const DB = {
   mode: "supabase", // "demo" | "firebase" | "supabase" — veja DEPLOY.md ou SUPABASE.md
+  pronto: false, // vira true assim que os usuários (fiscais) terminam de carregar
 
   _cache: { fiscais: [], cadastros: [], inspecoes: [], producao: [], ordens: [] },
   _firestore: null,
@@ -108,7 +109,15 @@ const DB = {
     } else {
       this._seedLocalIfEmpty(fiscaisIniciais);
       this._initDemoProducao(); // produção usa IndexedDB, não localStorage (ver abaixo)
+      this._marcarPronto();
     }
+  },
+
+  /** Chamado uma única vez, assim que os usuários (fiscais) terminam de carregar. */
+  _marcarPronto() {
+    if (this.pronto) return;
+    this.pronto = true;
+    window.dispatchEvent(new CustomEvent("db:ready"));
   },
 
   _initFirebase(fiscaisIniciais) {
@@ -141,6 +150,7 @@ const DB = {
     this._firestore.collection(colecao).onSnapshot(
       (snapshot) => {
         this._cache[colecao] = snapshot.docs.map(d => d.data());
+        if (colecao === "fiscais") this._marcarPronto();
         window.dispatchEvent(new CustomEvent("db:changed", { detail: { key: colecao } }));
       },
       (err) => console.error(`Erro ao sincronizar "${colecao}":`, err)
@@ -191,6 +201,16 @@ const DB = {
     return new Promise((resolve, reject) => {
       const tx = db.transaction(store, "readwrite");
       registros.forEach(r => tx.objectStore(store).put(r));
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  },
+
+  async _idbDeleteAll(store, ids) {
+    const db = await this._idbOpen();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(store, "readwrite");
+      ids.forEach(id => tx.objectStore(store).delete(id));
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
@@ -305,6 +325,50 @@ const DB = {
         }
       });
     return registros.length;
+  },
+
+  /** Exclui TODOS os registros de produção de um tipo (comercial/emergencial/miscelanea) — ex: base importada errada. */
+  deleteProducaoPorTipo(tipo) {
+    const idsParaExcluir = this.getProducao(tipo).map(r => r.id);
+    if (!idsParaExcluir.length) return 0;
+
+    if (this.mode === "firebase") {
+      const tamanhoLote = 450;
+      let p = Promise.resolve();
+      for (let i = 0; i < idsParaExcluir.length; i += tamanhoLote) {
+        const parte = idsParaExcluir.slice(i, i + tamanhoLote);
+        p = p.then(() => {
+          const batch = this._firestore.batch();
+          parte.forEach(id => batch.delete(this._firestore.collection("producao").doc(id)));
+          return batch.commit();
+        });
+      }
+      p.catch(err => console.error("Erro ao excluir base de produção:", err));
+      this._cache.producao = this._cache.producao.filter(r => r.tipo !== tipo);
+      window.dispatchEvent(new CustomEvent("db:changed", { detail: { key: "producao" } }));
+      return idsParaExcluir.length;
+    }
+
+    if (this.mode === "supabase") {
+      const tamanhoLote = 500;
+      let p = Promise.resolve();
+      for (let i = 0; i < idsParaExcluir.length; i += tamanhoLote) {
+        const parte = idsParaExcluir.slice(i, i + tamanhoLote);
+        p = p.then(() => this._sb.from("producao").delete().in("id", parte)).then(({ error }) => {
+          if (error) console.error("Erro ao excluir base de produção:", error);
+        });
+      }
+      this._cache.producao = this._cache.producao.filter(r => r.tipo !== tipo);
+      window.dispatchEvent(new CustomEvent("db:changed", { detail: { key: "producao" } }));
+      return idsParaExcluir.length;
+    }
+
+    // Demo → IndexedDB
+    this._cache.producao = this._cache.producao.filter(r => r.tipo !== tipo);
+    this._idbDeleteAll("producao", idsParaExcluir)
+      .then(() => window.dispatchEvent(new CustomEvent("db:changed", { detail: { key: "producao" } })))
+      .catch(err => console.error("Erro ao excluir base de produção (IndexedDB):", err));
+    return idsParaExcluir.length;
   },
 
   /** Cria/atualiza uma Ordem de Inspeção de Ativo (fluxo líder → fiscal → revisão) */

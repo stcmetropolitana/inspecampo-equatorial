@@ -37,6 +37,7 @@ const App = {
     this.bindLogin();
     this.bindShell();
     this.startClock();
+    this.watchDbPronto();
 
     const session = Auth.current();
     if (session) this.enterApp();
@@ -46,6 +47,23 @@ const App = {
       const route = Router.routes[Router.current];
       if (route && route.live) this.renderPage();
     });
+  },
+
+  /** Mantém o botão "Entrar" bloqueado até os usuários terminarem de carregar do servidor. */
+  watchDbPronto() {
+    const btn = Utils.qs("#btnLoginSubmit");
+    const hint = Utils.qs("#loginHint");
+    const liberar = () => {
+      if (!btn) return;
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> Entrar';
+      if (hint) hint.style.display = "none";
+    };
+    if (DB.pronto) { liberar(); return; }
+    window.addEventListener("db:ready", liberar, { once: true });
+    // Segurança extra: se a rede estiver lenta, libera mesmo assim depois de
+    // um tempo, para a pessoa não ficar travada sem conseguir nem tentar.
+    setTimeout(() => { if (!DB.pronto) liberar(); }, 8000);
   },
 
   /**
@@ -75,6 +93,10 @@ const App = {
 
       const result = Auth.login(matricula.value, senha.value);
       if (!result.ok) {
+        if (result.reason === "matricula" && !DB.pronto) {
+          Utils.error("Ainda carregando", "O sistema ainda está conectando ao servidor. Aguarde alguns segundos e tente novamente.");
+          return;
+        }
         if (result.reason === "matricula") fieldMatricula.classList.add("error");
         else fieldSenha.classList.add("error");
         return;

@@ -55,6 +55,7 @@ DB._subscribeSupabase = function (tabela) {
     this._sb.from(tabela).select("data").then(({ data, error }) => {
       if (error) { console.error(`Erro ao ler "${tabela}":`, error); return; }
       this._cache[tabela] = data.map(linha => linha.data);
+      if (tabela === "fiscais") this._marcarPronto();
       window.dispatchEvent(new CustomEvent("db:changed", { detail: { key: tabela } }));
     });
   };

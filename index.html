@@ -97,7 +97,8 @@
           <input id="inputSenha" type="password" placeholder="••••" autocomplete="off">
           <div class="error-msg">Senha incorreta. Tente novamente.</div>
         </div>
-        <button type="submit" class="btn btn-primary btn-block"><i class="fa-solid fa-right-to-bracket"></i> Entrar</button>
+        <button type="submit" class="btn btn-primary btn-block" id="btnLoginSubmit" disabled><i class="fa-solid fa-spinner fa-spin"></i> Carregando dados…</button>
+        <div class="text-muted" id="loginHint" style="font-size:.78rem;margin-top:8px;text-align:center;">Conectando ao servidor…</div>
       </form>
     </div>
   </div>

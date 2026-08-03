@@ -193,6 +193,17 @@ const ProducaoPage = {
     return isNaN(d) ? null : d.toISOString().slice(0, 10);
   },
 
+  async excluirBase(tipo, quantidade, container) {
+    const ok = await Utils.confirm(
+      `Excluir base "${this.TIPOS[tipo].label}"?`,
+      `Isso vai apagar os ${quantidade} registro(s) importados dessa base. Essa ação não pode ser desfeita. Depois é só importar a planilha certa de novo.`
+    );
+    if (!ok) return;
+    const excluidos = DB.deleteProducaoPorTipo(tipo);
+    Utils.toast(`${excluidos} registro(s) de "${this.TIPOS[tipo].label}" excluído(s).`);
+    this.render(container);
+  },
+
   disparaUpload(tipo, container) {
     const input = document.createElement("input");
     input.type = "file";
@@ -297,15 +308,22 @@ const ProducaoPage = {
       ]));
       const grid = Utils.el("div", { class: "panel-grid" });
       Object.entries(this.TIPOS).forEach(([tipo, cfg]) => {
+        const botoes = [Utils.el("button", {
+          class: "btn btn-primary btn-sm",
+          onclick: () => this.disparaUpload(tipo, container)
+        }, [Utils.el("i", { class: "fa-solid fa-upload" }), " Importar planilha"])];
+        if (totaisImportados[tipo] > 0) {
+          botoes.push(Utils.el("button", {
+            class: "btn btn-danger btn-sm",
+            onclick: () => this.excluirBase(tipo, totaisImportados[tipo], container)
+          }, [Utils.el("i", { class: "fa-solid fa-trash" }), " Excluir base"]));
+        }
         grid.appendChild(Utils.el("div", { class: "panel span-4", style: "margin:0;" }, [
           Utils.el("div", { class: "kpi-card c-blue", style: "border:none;box-shadow:none;padding:0;" }, [
             Utils.el("div", { class: "icon" }, [Utils.el("i", { class: `fa-solid ${cfg.icon}` })]),
             Utils.el("h3", { style: "margin:8px 0 4px;font-size:1rem;" }, cfg.label),
             Utils.el("p", { class: "text-muted", style: "font-size:.84rem;margin-bottom:14px;" }, `${totaisImportados[tipo]} registro(s) importado(s) até agora.`),
-            Utils.el("button", {
-              class: "btn btn-primary btn-sm",
-              onclick: () => this.disparaUpload(tipo, container)
-            }, [Utils.el("i", { class: "fa-solid fa-upload" }), " Importar planilha"])
+            Utils.el("div", { class: "flex gap-8", style: "flex-wrap:wrap;" }, botoes)
           ])
         ]));
       });
