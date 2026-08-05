@@ -62,7 +62,7 @@ const OrdensPage = {
   },
 
   /** Lista as ações necessárias com status de correção; se podeResolver, o fiscal pode marcar corrigida (com foto). */
-  renderAcoesLista(ordem, podeResolver, redesenharPai, container) {
+  renderAcoesLista(ordem, podeResolver, podeGerenciarReparo, redesenharPai, container) {
     const acoes = ordem.acoesSelecionadas || [];
     if (!acoes.length) return Utils.el("p", {}, "—");
     const wrap = Utils.el("div", {});
@@ -76,6 +76,8 @@ const OrdensPage = {
         wrap.appendChild(linha);
         return;
       }
+
+      const reparo = (typeof a === "object" && a.reparo) ? a.reparo : {};
 
       if (this.resolvidoAcao(a)) {
         const res = (typeof a === "object" ? a.resolucao : null);
@@ -101,10 +103,104 @@ const OrdensPage = {
             onclick: () => this.abrirResolucaoAcao(ordem, idx, nome, redesenharPai, container)
           }, [Utils.el("i", { class: "fa-solid fa-check" }), " Registrar correção"]));
         }
+
+        // Acompanhamento do envio da equipe de reparo (fluxo: equipe enviada → equipe concluiu → fiscal confirma)
+        const statusReparo = Utils.el("div", { class: "readonly-chip mt-8", style: "align-items:flex-start;flex-direction:column;gap:4px;" });
+        if (!reparo.equipeEnviada) {
+          statusReparo.appendChild(Utils.el("div", { class: "text-muted" }, [Utils.el("i", { class: "fa-solid fa-clock" }), " Aguardando envio de equipe para o reparo"]));
+        } else {
+          statusReparo.appendChild(Utils.el("div", {}, [Utils.el("i", { class: "fa-solid fa-truck" }), ` Equipe ${reparo.equipeEnviada.equipe} enviada em ${Utils.formatDate(reparo.equipeEnviada.data)}`]));
+          if (reparo.equipeEnviada.observacao) statusReparo.appendChild(Utils.el("div", { class: "text-muted", style: "font-size:.78rem;" }, reparo.equipeEnviada.observacao));
+          if (reparo.equipeConcluiu) {
+            statusReparo.appendChild(Utils.el("div", { class: "mt-8" }, [Utils.el("i", { class: "fa-solid fa-circle-check" }), ` Equipe concluiu o reparo em ${Utils.formatDate(reparo.equipeConcluiu.data)}`]));
+            if (reparo.equipeConcluiu.observacao) statusReparo.appendChild(Utils.el("div", { class: "text-muted", style: "font-size:.78rem;" }, reparo.equipeConcluiu.observacao));
+          }
+        }
+        linha.appendChild(statusReparo);
+
+        if (podeGerenciarReparo) {
+          const botoesReparo = Utils.el("div", { class: "flex gap-8 mt-8", style: "flex-wrap:wrap;" });
+          if (!reparo.equipeEnviada) {
+            botoesReparo.appendChild(Utils.el("button", {
+              type: "button", class: "btn btn-secondary btn-sm",
+              onclick: () => this.abrirInformarReparo(ordem, idx, nome, "enviada", redesenharPai, container)
+            }, [Utils.el("i", { class: "fa-solid fa-truck" }), " Informar equipe enviada"]));
+          } else if (!reparo.equipeConcluiu) {
+            botoesReparo.appendChild(Utils.el("button", {
+              type: "button", class: "btn btn-secondary btn-sm",
+              onclick: () => this.abrirInformarReparo(ordem, idx, nome, "concluiu", redesenharPai, container)
+            }, [Utils.el("i", { class: "fa-solid fa-circle-check" }), " Informar reparo concluído"]));
+          }
+          if (botoesReparo.childNodes.length) linha.appendChild(botoesReparo);
+        }
       }
       wrap.appendChild(linha);
     });
     return wrap;
+  },
+
+  /** Modal do analista/líder: registrar que a equipe foi enviada para o reparo, ou que ela concluiu. */
+  abrirInformarReparo(ordem, idx, nomeAcao, etapa, redesenharPai, container) {
+    const user = Auth.current();
+    const titulo = etapa === "enviada" ? "Informar equipe enviada para reparo" : "Informar reparo concluído";
+    const dado = { equipe: "", data: new Date().toISOString().slice(0, 10), observacao: "" };
+
+    const overlay = Utils.el("div", { class: "modal-overlay" });
+    const box = Utils.el("div", { class: "modal-box" });
+    box.appendChild(Utils.el("div", { class: "modal-head" }, [
+      Utils.el("h3", {}, `${titulo} — ${nomeAcao}`),
+      Utils.el("button", { class: "modal-close", onclick: () => overlay.remove() }, [Utils.el("i", { class: "fa-solid fa-xmark" })])
+    ]));
+    const body = Utils.el("div", { class: "modal-body" });
+
+    const grid = Utils.el("div", { class: "form-grid" });
+    if (etapa === "enviada") {
+      grid.appendChild(Utils.el("div", { class: "field" }, [
+        Utils.el("label", {}, "Equipe responsável *"),
+        Utils.el("input", { type: "text", placeholder: "Prefixo ou nome da equipe", oninput: (e) => dado.equipe = e.target.value.toUpperCase() })
+      ]));
+    }
+    grid.appendChild(Utils.el("div", { class: "field" }, [
+      Utils.el("label", {}, etapa === "enviada" ? "Data do envio *" : "Data da conclusão *"),
+      Utils.el("input", { type: "date", value: dado.data, oninput: (e) => dado.data = e.target.value })
+    ]));
+    body.appendChild(grid);
+
+    body.appendChild(Utils.el("div", { class: "field mt-8" }, [
+      Utils.el("label", {}, "Observação"),
+      Utils.el("textarea", { rows: 2, oninput: (e) => dado.observacao = e.target.value })
+    ]));
+
+    body.appendChild(Utils.el("div", { class: "flex gap-8", style: "justify-content:flex-end;margin-top:16px;" }, [
+      Utils.el("button", {
+        type: "button", class: "btn btn-primary",
+        onclick: () => {
+          if (etapa === "enviada" && !dado.equipe.trim()) { Utils.error("Faltam informações", "Informe a equipe responsável pelo reparo."); return; }
+          if (!dado.data) { Utils.error("Faltam informações", "Informe a data."); return; }
+
+          const acaoAtual = ordem.acoesSelecionadas[idx];
+          const reparoAtual = (typeof acaoAtual === "object" && acaoAtual.reparo) ? acaoAtual.reparo : {};
+          const registro = { data: dado.data, observacao: dado.observacao.trim(), registradoPor: user.nome, dataRegistroISO: Utils.nowISO() };
+          if (etapa === "enviada") registro.equipe = dado.equipe.trim();
+
+          ordem.acoesSelecionadas[idx] = {
+            acao: nomeAcao,
+            resolvido: false,
+            resolucao: (typeof acaoAtual === "object" ? acaoAtual.resolucao : null) || null,
+            reparo: { ...reparoAtual, [etapa === "enviada" ? "equipeEnviada" : "equipeConcluiu"]: registro }
+          };
+          const salvo = DB.saveOrdem(ordem);
+          if (!salvo) return;
+          Utils.toast(etapa === "enviada" ? "Equipe de reparo registrada!" : "Conclusão do reparo registrada!");
+          overlay.remove();
+          if (redesenharPai) redesenharPai();
+        }
+      }, [Utils.el("i", { class: "fa-solid fa-check" }), " Salvar"])
+    ]));
+
+    box.appendChild(body);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
   },
 
   /** Modal para o fiscal registrar a correção de uma ação pendente: foto + descrição + data + equipe. */
@@ -267,6 +363,16 @@ const OrdensPage = {
         const pendCorrecao = this.contarPendenciasCorrecao(o);
         const statusCell = [Utils.el("span", { class: `badge ${st.cls}` }, st.label)];
         if (pendCorrecao > 0) statusCell.push(Utils.el("span", { class: "badge badge-danger", style: "margin-left:4px;" }, `${pendCorrecao} p/ corrigir`));
+        const botoesFiscal = [Utils.el("button", {
+          class: `btn btn-sm ${podePreencher ? "btn-primary" : "btn-ghost"}`,
+          onclick: () => this.abrirExecucao(o, container)
+        }, [Utils.el("i", { class: `fa-solid ${podePreencher ? "fa-camera" : "fa-eye"}` }), podePreencher ? " Preencher Inspeção" : " Ver"])];
+        if (o.dataExecucaoISO) {
+          botoesFiscal.push(Utils.el("button", {
+            class: "btn btn-secondary btn-sm",
+            onclick: () => Exporter.exportOrdemPDF(o)
+          }, [Utils.el("i", { class: "fa-solid fa-file-pdf" }), " PDF"]));
+        }
         tbody.appendChild(Utils.el("tr", {}, [
           Utils.el("td", { class: "mono" }, Utils.formatDateTime(o.dataEnvioISO)),
           Utils.el("td", {}, [Utils.el("b", {}, o.tipoAtivo)]),
@@ -275,10 +381,7 @@ const OrdensPage = {
           Utils.el("td", {}, o.prioridade),
           Utils.el("td", { class: "mono" }, o.prazo ? Utils.formatDate(o.prazo) : "—"),
           Utils.el("td", {}, statusCell),
-          Utils.el("td", {}, [Utils.el("button", {
-            class: `btn btn-sm ${podePreencher ? "btn-primary" : "btn-ghost"}`,
-            onclick: () => this.abrirExecucao(o, container)
-          }, [Utils.el("i", { class: `fa-solid ${podePreencher ? "fa-camera" : "fa-eye"}` }), podePreencher ? " Preencher Inspeção" : " Ver"])])
+          Utils.el("td", { class: "flex gap-8", style: "flex-wrap:wrap;" }, botoesFiscal)
         ]));
       });
       table.appendChild(tbody);
@@ -418,7 +521,7 @@ const OrdensPage = {
           body.appendChild(Utils.el("p", { class: "text-muted" }, "Nenhuma foto registrada ainda."));
         }
         body.appendChild(Utils.el("div", { class: "detail-item k mt-8" }, "Ações necessárias"));
-        body.appendChild(this.renderAcoesLista(ordem, true, desenhar, container));
+        body.appendChild(this.renderAcoesLista(ordem, true, false, desenhar, container));
         body.appendChild(Utils.el("div", { class: "detail-item k mt-8" }, "Observações"));
         body.appendChild(Utils.el("p", {}, ordem.observacoesFiscal || "—"));
 
@@ -600,6 +703,12 @@ const OrdensPage = {
           class: `btn btn-sm ${precisaRevisar ? "btn-primary" : "btn-ghost"}`,
           onclick: () => this.abrirRevisao(o, container)
         }, [Utils.el("i", { class: `fa-solid ${precisaRevisar ? "fa-magnifying-glass" : "fa-eye"}` }), precisaRevisar ? " Revisar" : " Ver"])];
+        if (o.dataExecucaoISO) {
+          botoes.push(Utils.el("button", {
+            class: "btn btn-secondary btn-sm",
+            onclick: () => Exporter.exportOrdemPDF(o)
+          }, [Utils.el("i", { class: "fa-solid fa-file-pdf" }), " PDF"]));
+        }
         if (o.status === "pendente") {
           botoes.push(Utils.el("button", {
             class: "btn btn-danger btn-sm",
@@ -618,7 +727,7 @@ const OrdensPage = {
           Utils.el("td", {}, o.identificacao || "—"),
           Utils.el("td", {}, o.prioridade),
           Utils.el("td", {}, statusCell),
-          Utils.el("td", { class: "flex gap-8" }, botoes)
+          Utils.el("td", { class: "flex gap-8", style: "flex-wrap:wrap;" }, botoes)
         ]));
       });
       table.appendChild(tbody);
@@ -750,58 +859,63 @@ const OrdensPage = {
       Utils.el("button", { class: "modal-close", onclick: () => overlay.remove() }, [Utils.el("i", { class: "fa-solid fa-xmark" })])
     ]));
     const body = Utils.el("div", { class: "modal-body" });
-
-    const grid = Utils.el("div", { class: "detail-grid" });
-    [
-      ["Identificação", ordem.identificacao || "—"], ["Município", ordem.municipio],
-      ["Endereço/Referência", ordem.endereco || "—"], ["Prioridade", ordem.prioridade],
-      ["Enviada por", `${ordem.criadoPorNome || "—"}${ordem.criadoPorPerfil === "analista" ? " (Analista)" : ordem.criadoPorPerfil === "lider" ? " (Líder)" : ""}`],
-      ["Enviada ao fiscal em", Utils.formatDateTime(ordem.dataEnvioISO)],
-      ["Executada em", ordem.dataExecucaoISO ? Utils.formatDateTime(ordem.dataExecucaoISO) : "—"],
-      ["GPS do fiscal", ordem.gpsFiscal ? `${ordem.gpsFiscal.lat.toFixed(5)}, ${ordem.gpsFiscal.lng.toFixed(5)}` : "—"]
-    ].forEach(([k, v]) => grid.appendChild(Utils.el("div", { class: "detail-item" }, [Utils.el("div", { class: "k" }, k), Utils.el("div", { class: "v" }, v || "—")])));
-    body.appendChild(grid);
-
-    if (ordem.motivo) {
-      body.appendChild(Utils.el("div", { class: "detail-item k mt-8" }, "Instruções originais"));
-      body.appendChild(Utils.el("p", { class: "mt-8" }, ordem.motivo));
-    }
-
-    if (ordem.status === "pendente") {
-      body.appendChild(Utils.el("div", { class: "empty-state" }, [
-        Utils.el("i", { class: "fa-solid fa-hourglass-half" }),
-        Utils.el("h3", {}, "Aguardando o fiscal"),
-        Utils.el("p", {}, "O fiscal ainda não iniciou o preenchimento desta ordem.")
-      ]));
-    } else {
-      body.appendChild(Utils.el("div", { class: "detail-item k mt-8" }, "Registro fotográfico"));
-      if ((ordem.fotos || []).length) {
-        const pg = Utils.el("div", { class: "detail-photos" });
-        ordem.fotos.forEach(src => pg.appendChild(Utils.el("img", { src, onclick: () => Gallery.lightbox(src) })));
-        body.appendChild(pg);
-      } else {
-        body.appendChild(Utils.el("p", { class: "text-muted" }, "Nenhuma foto registrada."));
-      }
-      body.appendChild(Utils.el("div", { class: "detail-item k mt-8" }, "Ações necessárias"));
-      body.appendChild(this.renderAcoesLista(ordem, false, null, container));
-      body.appendChild(Utils.el("div", { class: "detail-item k mt-8" }, "Observações do fiscal"));
-      body.appendChild(Utils.el("p", {}, ordem.observacoesFiscal || "—"));
-
-      if (ordem.status === "aguardando_revisao") {
-        const comentarioField = Utils.el("textarea", { rows: 2, placeholder: "Comentário (obrigatório para recusar)" });
-        body.appendChild(Utils.el("div", { class: "field mt-16" }, [Utils.el("label", {}, "Comentário da revisão"), comentarioField]));
-        body.appendChild(Utils.el("div", { class: "flex gap-8", style: "justify-content:flex-end;margin-top:8px;" }, [
-          Utils.el("button", { type: "button", class: "btn btn-danger", onclick: () => this.revisarOrdem(ordem, "recusada", comentarioField.value, overlay, container) }, [Utils.el("i", { class: "fa-solid fa-xmark" }), " Recusar"]),
-          Utils.el("button", { type: "button", class: "btn btn-primary", onclick: () => this.revisarOrdem(ordem, "aprovada", comentarioField.value, overlay, container) }, [Utils.el("i", { class: "fa-solid fa-check" }), " Aprovar"])
-        ]));
-      } else if (ordem.revisao) {
-        body.appendChild(Utils.el("div", { class: "detail-item k mt-8" }, "Sua revisão"));
-        body.appendChild(Utils.el("span", { class: `badge ${this.STATUS_INFO[ordem.status].cls}` }, this.STATUS_INFO[ordem.status].label));
-        if (ordem.revisao.comentario) body.appendChild(Utils.el("p", { class: "mt-8" }, ordem.revisao.comentario));
-      }
-    }
-
     box.appendChild(body);
+
+    const desenhar = () => {
+      body.innerHTML = "";
+
+      const grid = Utils.el("div", { class: "detail-grid" });
+      [
+        ["Identificação", ordem.identificacao || "—"], ["Município", ordem.municipio],
+        ["Endereço/Referência", ordem.endereco || "—"], ["Prioridade", ordem.prioridade],
+        ["Enviada por", `${ordem.criadoPorNome || "—"}${ordem.criadoPorPerfil === "analista" ? " (Analista)" : ordem.criadoPorPerfil === "lider" ? " (Líder)" : ""}`],
+        ["Enviada ao fiscal em", Utils.formatDateTime(ordem.dataEnvioISO)],
+        ["Executada em", ordem.dataExecucaoISO ? Utils.formatDateTime(ordem.dataExecucaoISO) : "—"],
+        ["GPS do fiscal", ordem.gpsFiscal ? `${ordem.gpsFiscal.lat.toFixed(5)}, ${ordem.gpsFiscal.lng.toFixed(5)}` : "—"]
+      ].forEach(([k, v]) => grid.appendChild(Utils.el("div", { class: "detail-item" }, [Utils.el("div", { class: "k" }, k), Utils.el("div", { class: "v" }, v || "—")])));
+      body.appendChild(grid);
+
+      if (ordem.motivo) {
+        body.appendChild(Utils.el("div", { class: "detail-item k mt-8" }, "Instruções originais"));
+        body.appendChild(Utils.el("p", { class: "mt-8" }, ordem.motivo));
+      }
+
+      if (ordem.status === "pendente") {
+        body.appendChild(Utils.el("div", { class: "empty-state" }, [
+          Utils.el("i", { class: "fa-solid fa-hourglass-half" }),
+          Utils.el("h3", {}, "Aguardando o fiscal"),
+          Utils.el("p", {}, "O fiscal ainda não iniciou o preenchimento desta ordem.")
+        ]));
+      } else {
+        body.appendChild(Utils.el("div", { class: "detail-item k mt-8" }, "Registro fotográfico"));
+        if ((ordem.fotos || []).length) {
+          const pg = Utils.el("div", { class: "detail-photos" });
+          ordem.fotos.forEach(src => pg.appendChild(Utils.el("img", { src, onclick: () => Gallery.lightbox(src) })));
+          body.appendChild(pg);
+        } else {
+          body.appendChild(Utils.el("p", { class: "text-muted" }, "Nenhuma foto registrada."));
+        }
+        body.appendChild(Utils.el("div", { class: "detail-item k mt-8" }, "Ações necessárias"));
+        body.appendChild(this.renderAcoesLista(ordem, false, true, desenhar, container));
+        body.appendChild(Utils.el("div", { class: "detail-item k mt-8" }, "Observações do fiscal"));
+        body.appendChild(Utils.el("p", {}, ordem.observacoesFiscal || "—"));
+
+        if (ordem.status === "aguardando_revisao") {
+          const comentarioField = Utils.el("textarea", { rows: 2, placeholder: "Comentário (obrigatório para recusar)" });
+          body.appendChild(Utils.el("div", { class: "field mt-16" }, [Utils.el("label", {}, "Comentário da revisão"), comentarioField]));
+          body.appendChild(Utils.el("div", { class: "flex gap-8", style: "justify-content:flex-end;margin-top:8px;" }, [
+            Utils.el("button", { type: "button", class: "btn btn-danger", onclick: () => this.revisarOrdem(ordem, "recusada", comentarioField.value, overlay, container) }, [Utils.el("i", { class: "fa-solid fa-xmark" }), " Recusar"]),
+            Utils.el("button", { type: "button", class: "btn btn-primary", onclick: () => this.revisarOrdem(ordem, "aprovada", comentarioField.value, overlay, container) }, [Utils.el("i", { class: "fa-solid fa-check" }), " Aprovar"])
+          ]));
+        } else if (ordem.revisao) {
+          body.appendChild(Utils.el("div", { class: "detail-item k mt-8" }, "Sua revisão"));
+          body.appendChild(Utils.el("span", { class: `badge ${this.STATUS_INFO[ordem.status].cls}` }, this.STATUS_INFO[ordem.status].label));
+          if (ordem.revisao.comentario) body.appendChild(Utils.el("p", { class: "mt-8" }, ordem.revisao.comentario));
+        }
+      }
+    };
+
+    desenhar();
     overlay.appendChild(box);
     document.body.appendChild(overlay);
   },

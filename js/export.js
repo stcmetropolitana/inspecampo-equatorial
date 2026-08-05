@@ -52,13 +52,19 @@ const Exporter = {
       rows.push(["EPCs do veículo", `${totalEpc - danificadosEpc}/${totalEpc} de acordo${danificadosEpc ? ` — ${danificadosEpc} danificado(s)` : ""}`]);
     }
 
+    const labelWidth = 42; // mm reservados pro rótulo — evita ele "vazar" em cima do valor
+    const valueX = 60;
+    const valueWidth = 132;
     rows.forEach(([k, v]) => {
       doc.setFont("helvetica", "bold");
-      doc.text(`${k}:`, 14, y);
+      const keyLines = doc.splitTextToSize(`${k}:`, labelWidth);
+      doc.text(keyLines, 14, y);
       doc.setFont("helvetica", "normal");
-      const lines = doc.splitTextToSize(String(v || "—"), 130);
-      doc.text(lines, 60, y);
-      y += 7 * lines.length;
+      const valueLines = doc.splitTextToSize(String(v || "—"), valueWidth);
+      doc.text(valueLines, valueX, y);
+      const linhas = Math.max(keyLines.length, valueLines.length);
+      y += 6.5 * linhas + 2.5;
+      if (y > 275) { doc.addPage(); y = 18; }
     });
 
     y += 4;
@@ -81,6 +87,36 @@ const Exporter = {
       x += 46;
       if ((idx + 1) % 4 === 0) { x = 14; y += 44; }
     });
+    if (photos.length % 4 !== 0) y += 44;
+
+    // ---------- Fotos dos itens de EPI/EPC danificados ----------
+    const fotosDanificados = [
+      ...(insp.epiPorColaborador || []).flatMap(c => c.itens
+        .filter(it => it.estado === "danificado" && it.foto)
+        .map(it => ({ label: `EPI — ${c.colaborador || ""} — ${it.nome}`, src: it.foto }))),
+      ...(insp.epc ? insp.epc.itens.filter(it => it.estado === "danificado" && it.foto).map(it => ({ label: `EPC — ${it.nome}`, src: it.foto })) : [])
+    ];
+    if (fotosDanificados.length) {
+      if (y > 240) { doc.addPage(); y = 18; }
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.setTextColor(215, 38, 61);
+      doc.text("Itens de EPI/EPC Danificados", 14, y);
+      y += 8;
+      x = 14;
+      doc.setTextColor(20, 30, 45);
+      fotosDanificados.forEach((p, idx) => {
+        if (y > 250) { doc.addPage(); y = 18; x = 14; }
+        try {
+          doc.addImage(p.src, "JPEG", x, y, 42, 32);
+          doc.setFontSize(7.5);
+          const lines = doc.splitTextToSize(p.label, 42);
+          doc.text(lines, x, y + 36);
+        } catch (e) { /* ignora imagem inválida */ }
+        x += 46;
+        if ((idx + 1) % 4 === 0) { x = 14; y += 44; }
+      });
+    }
 
     doc.save(`inspecao_${insp.equipePrefixo}_${insp.id}.pdf`);
     Utils.toast("PDF gerado com sucesso.");
@@ -198,5 +234,185 @@ const Exporter = {
     XLSX.utils.book_append_sheet(wb, ws, "Itens Danificados");
     XLSX.writeFile(wb, `itens_danificados_${new Date().toISOString().slice(0, 10)}.xlsx`);
     Utils.toast("Relatório de itens danificados exportado.");
+  },
+
+  /** Linhas do checklist (EPI + EPC) de UMA inspeção, item por item — usado nas duas exportações abaixo. */
+  _linhasChecklist(insp) {
+    const linhaResolucao = (it) => it.estado !== "danificado"
+      ? { "Status da Correção": "—", "Corrigido em": "—", "Corrigido por": "—" }
+      : it.resolucao?.resolvido
+        ? { "Status da Correção": "Corrigida", "Corrigido em": Utils.formatDateTime(it.resolucao.dataResolucao), "Corrigido por": it.resolucao.resolvidoPor }
+        : { "Status da Correção": "Pendente", "Corrigido em": "—", "Corrigido por": "—" };
+
+    const base = {
+      "Data": insp.dataInspecao ? Utils.formatDate(insp.dataInspecao) : "—",
+      "Equipe": insp.equipePrefixo, "Fiscal": insp.fiscalNome, "Município": insp.municipio
+    };
+    const linhas = [];
+    (insp.epiPorColaborador || []).forEach(c => {
+      c.itens.forEach(it => linhas.push({
+        ...base, "Categoria": "EPI", "Colaborador": c.colaborador || "—", "Item": it.nome,
+        "Situação": it.estado === "danificado" ? "Danificado" : it.estado === "de_acordo" ? "De acordo" : "—",
+        "Quantidade": it.quantidade, "Validade do Laudo": it.validade || "—", ...linhaResolucao(it)
+      }));
+    });
+    if (insp.epc) {
+      insp.epc.itens.forEach(it => linhas.push({
+        ...base, "Categoria": "EPC", "Colaborador": "—", "Item": it.nome,
+        "Situação": it.estado === "danificado" ? "Danificado" : it.estado === "de_acordo" ? "De acordo" : "—",
+        "Quantidade": it.quantidade, "Validade do Laudo": it.validade || "—", ...linhaResolucao(it)
+      }));
+    }
+    return linhas;
+  },
+
+  /** Checklist item a item (o que está de acordo e o que está danificado) de UMA inspeção/equipe. */
+  exportChecklistExcel(insp) {
+    const linhas = this._linhasChecklist(insp);
+    if (!linhas.length) { Utils.toast("Essa inspeção não tem itens de checklist.", "warning"); return; }
+    const ws = XLSX.utils.json_to_sheet(linhas);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Checklist");
+    XLSX.writeFile(wb, `checklist_${insp.equipePrefixo}_${insp.dataInspecao || ""}.xlsx`);
+    Utils.toast("Checklist exportado com sucesso.");
+  },
+
+  /** Checklist item a item de VÁRIAS inspeções (equipes), tudo na mesma planilha. */
+  exportChecklistsExcel(lista) {
+    const inspecoes = lista && lista.length ? lista : DB.getInspecoes();
+    if (!inspecoes.length) { Utils.toast("Nenhuma inspeção para exportar.", "warning"); return; }
+    const linhas = inspecoes.flatMap(insp => this._linhasChecklist(insp));
+    if (!linhas.length) { Utils.toast("Nenhum item de checklist encontrado.", "warning"); return; }
+    const ws = XLSX.utils.json_to_sheet(linhas);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Checklists");
+    XLSX.writeFile(wb, `checklists_todas_equipes_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    Utils.toast(`Checklist de ${inspecoes.length} inspeção(ões) exportado com sucesso.`);
+  },
+
+  /** Relatório em PDF de uma Ordem de Inspeção: dados, linha do tempo dos passos seguidos e fotos. */
+  exportOrdemPDF(ordem) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    let y = 18;
+
+    const garantirEspaco = (altura) => { if (y + altura > 280) { doc.addPage(); y = 18; } };
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.setTextColor(10, 77, 166);
+    doc.text("Relatório de Ordem de Inspeção", 14, y);
+    y += 6;
+    doc.setDrawColor(10, 77, 166);
+    doc.line(14, y, 196, y);
+    y += 10;
+
+    const perfilLabel = { analista: "Analista", lider: "Líder", admin: "Administrador" };
+    const rows = [
+      ["Equipamento/UC", ordem.tipoAtivo],
+      ["Identificação", ordem.identificacao || "—"],
+      ["Município", ordem.municipio],
+      ["Endereço/Referência", ordem.endereco || "—"],
+      ["Prioridade", ordem.prioridade],
+      ["Prazo", ordem.prazo ? Utils.formatDate(ordem.prazo) : "—"],
+      ["Fiscal", ordem.fiscalNome],
+      ["Enviada por", `${ordem.criadoPorNome || "—"}${ordem.criadoPorPerfil ? ` (${perfilLabel[ordem.criadoPorPerfil] || ordem.criadoPorPerfil})` : ""}`],
+      ["Status atual", OrdensPage.STATUS_INFO[ordem.status]?.label || ordem.status]
+    ];
+    if (ordem.motivo) rows.push(["Instruções originais", ordem.motivo]);
+    if (ordem.observacoesFiscal) rows.push(["Observações do fiscal", ordem.observacoesFiscal]);
+
+    doc.setFontSize(11);
+    doc.setTextColor(20, 30, 45);
+    const labelWidth = 42, valueX = 60, valueWidth = 132;
+    rows.forEach(([k, v]) => {
+      doc.setFont("helvetica", "bold");
+      const keyLines = doc.splitTextToSize(`${k}:`, labelWidth);
+      doc.text(keyLines, 14, y);
+      doc.setFont("helvetica", "normal");
+      const valueLines = doc.splitTextToSize(String(v || "—"), valueWidth);
+      doc.text(valueLines, valueX, y);
+      const linhas = Math.max(keyLines.length, valueLines.length);
+      y += 6.5 * linhas + 2.5;
+      garantirEspaco(20);
+    });
+
+    // ---------- Linha do tempo (passos seguidos) ----------
+    y += 5;
+    garantirEspaco(20);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(13);
+    doc.setTextColor(10, 77, 166);
+    doc.text("Linha do Tempo", 14, y);
+    y += 9;
+
+    const passos = [];
+    passos.push(`Ordem enviada por ${ordem.criadoPorNome || "—"} em ${Utils.formatDateTime(ordem.dataEnvioISO)}.`);
+    if (ordem.dataExecucaoISO) {
+      passos.push(`Fiscal ${ordem.fiscalNome} realizou a inspeção em campo em ${Utils.formatDateTime(ordem.dataExecucaoISO)}${(ordem.fotos || []).length ? ` (${ordem.fotos.length} foto(s) anexada(s))` : ""}.`);
+    }
+    if (ordem.revisao) {
+      const acaoRev = ordem.revisao.status === "aprovada" ? "aprovou" : "recusou";
+      passos.push(`${ordem.revisao.revisorNome || "—"} ${acaoRev} a inspeção em ${Utils.formatDateTime(ordem.revisao.dataISO)}${ordem.revisao.comentario ? ` — "${ordem.revisao.comentario}"` : ""}.`);
+    }
+    (ordem.acoesSelecionadas || []).forEach(a => {
+      const nome = OrdensPage.nomeAcao(a);
+      if (nome === "Sem irregularidades encontradas") return;
+      const reparo = (typeof a === "object" && a.reparo) ? a.reparo : {};
+      if (reparo.equipeEnviada) passos.push(`[${nome}] Equipe ${reparo.equipeEnviada.equipe} enviada para o reparo em ${Utils.formatDate(reparo.equipeEnviada.data)}${reparo.equipeEnviada.observacao ? ` — ${reparo.equipeEnviada.observacao}` : ""}.`);
+      if (reparo.equipeConcluiu) passos.push(`[${nome}] Equipe concluiu o reparo em ${Utils.formatDate(reparo.equipeConcluiu.data)}${reparo.equipeConcluiu.observacao ? ` — ${reparo.equipeConcluiu.observacao}` : ""}.`);
+      if (OrdensPage.resolvidoAcao(a) && a.resolucao) {
+        passos.push(`[${nome}] Correção confirmada pelo fiscal em ${a.resolucao.dataCorrecao ? Utils.formatDate(a.resolucao.dataCorrecao) : "—"}${a.resolucao.descricao ? ` — ${a.resolucao.descricao}` : ""}.`);
+      } else if (!reparo.equipeEnviada) {
+        passos.push(`[${nome}] Ainda aguardando o envio de uma equipe para o reparo.`);
+      }
+    });
+
+    doc.setFontSize(10);
+    doc.setTextColor(20, 30, 45);
+    passos.forEach((texto, idx) => {
+      doc.setFont("helvetica", "bold");
+      doc.text(`${idx + 1}.`, 14, y);
+      doc.setFont("helvetica", "normal");
+      const lines = doc.splitTextToSize(texto, 172);
+      doc.text(lines, 22, y);
+      y += 6 * lines.length + 2;
+      garantirEspaco(20);
+    });
+
+    // ---------- Fotos ----------
+    const fotos = [
+      ...(ordem.fotos || []).map((src, i) => ({ label: `Registro fotográfico ${i + 1}`, src })),
+      ...(ordem.acoesSelecionadas || [])
+        .filter(a => OrdensPage.resolvidoAcao(a) && a.resolucao?.fotoResolucao)
+        .map(a => ({ label: `Correção — ${OrdensPage.nomeAcao(a)}`, src: a.resolucao.fotoResolucao }))
+    ];
+
+    if (fotos.length) {
+      y += 5;
+      garantirEspaco(50);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(13);
+      doc.setTextColor(10, 77, 166);
+      doc.text("Fotos", 14, y);
+      y += 9;
+      doc.setTextColor(20, 30, 45);
+
+      let x = 14;
+      fotos.forEach((p, idx) => {
+        if (y > 250) { doc.addPage(); y = 18; x = 14; }
+        try {
+          doc.addImage(p.src, "JPEG", x, y, 42, 32);
+          doc.setFontSize(7.5);
+          const lines = doc.splitTextToSize(p.label, 42);
+          doc.text(lines, x, y + 36);
+        } catch (e) { /* ignora imagem inválida */ }
+        x += 46;
+        if ((idx + 1) % 4 === 0) { x = 14; y += 44; }
+      });
+    }
+
+    doc.save(`ordem_inspecao_${ordem.tipoAtivo.replace(/\s+/g, "_")}_${ordem.id}.pdf`);
+    Utils.toast("PDF da ordem gerado com sucesso.");
   }
 };

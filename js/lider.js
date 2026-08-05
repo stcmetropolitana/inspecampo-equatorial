@@ -213,6 +213,12 @@ const LiderPage = {
         Utils.el("h3", {}, "Inspeções Realizadas"),
         Utils.el("span", { class: "tag" }, `${inspecoesFiltradas.length} inspeção(ões)`)
       ]));
+      if (inspecoesFiltradas.length > 0) {
+        panelInsp.appendChild(Utils.el("button", {
+          class: "btn btn-secondary btn-sm mb-16",
+          onclick: () => Exporter.exportChecklistsExcel(inspecoesFiltradas)
+        }, [Utils.el("i", { class: "fa-solid fa-file-excel" }), ` Exportar Todos os Checklists (${inspecoesFiltradas.length}) — Excel`]));
+      }
 
       if (inspecoesFiltradas.length === 0) {
         panelInsp.appendChild(Utils.el("div", { class: "empty-state" }, [
@@ -241,8 +247,10 @@ const LiderPage = {
                   ? Utils.el("span", { class: "badge badge-danger" }, `${pendentes} pendente(s)`)
                   : Utils.el("span", { class: "badge badge-success" }, "Resolvido")
             ]),
-            Utils.el("td", { class: "flex gap-8" }, [
+            Utils.el("td", { class: "flex gap-8", style: "flex-wrap:wrap;" }, [
               Utils.el("button", { class: "btn btn-ghost btn-sm", onclick: () => HistoryPage.openDetail(insp) }, [Utils.el("i", { class: "fa-solid fa-eye" }), " Ver"]),
+              Utils.el("button", { class: "btn btn-secondary btn-sm", onclick: () => Exporter.exportChecklistExcel(insp) }, [Utils.el("i", { class: "fa-solid fa-file-excel" }), " Excel"]),
+              Utils.el("button", { class: "btn btn-secondary btn-sm", onclick: () => Exporter.exportInspecaoPDF(insp) }, [Utils.el("i", { class: "fa-solid fa-file-pdf" }), " PDF"]),
               Utils.el("button", { class: "btn btn-danger btn-sm", onclick: () => this.excluirInspecao(insp, container) }, [Utils.el("i", { class: "fa-solid fa-trash" }), " Excluir"])
             ])
           ]));
