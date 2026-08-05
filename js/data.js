@@ -43,7 +43,8 @@ const LIDERES = [
  * ------------------------------------------------------------------------
  */
 const USUARIOS = [
-  { nome: "Marcos Vinícius Alves", matricula: "EQT20000", senha: "admin2026", perfil: "admin" },
+  { nome: "Nilton Junior Santos Sousa", matricula: "21030190", senha: "Maio2021", perfil: "admin" },
+  { nome: "Cassia Helena Do Carmo Gontigo Silva", matricula: "21025407", senha: "admin2026", perfil: "admin" },
 
   { nome: "Alessandro Pereira Bispo",              matricula: "21056985", perfil: "analista", liderId: null },
   { nome: "Lucas Rodrigues de Sousa Guimaraes",     matricula: "21058009", perfil: "analista", liderId: null },
