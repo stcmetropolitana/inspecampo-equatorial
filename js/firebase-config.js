@@ -253,6 +253,21 @@ const DB = {
   // ---------------------------------------------------------------------
   // Escrita
   // ---------------------------------------------------------------------
+  /** Atualiza um item na cache local na hora — sem esperar o "tempo real" do Supabase confirmar (evita telas desatualizadas logo após salvar). */
+  _upsertCacheLocal(tabela, objeto) {
+    if (!this._cache[tabela]) this._cache[tabela] = [];
+    const idx = this._cache[tabela].findIndex(r => r.id === objeto.id);
+    if (idx >= 0) this._cache[tabela][idx] = objeto; else this._cache[tabela].push(objeto);
+    window.dispatchEvent(new CustomEvent("db:changed", { detail: { key: tabela } }));
+  },
+
+  /** Remove um item da cache local na hora — mesmo motivo do _upsertCacheLocal acima. */
+  _removerCacheLocal(tabela, id) {
+    if (!this._cache[tabela]) return;
+    this._cache[tabela] = this._cache[tabela].filter(r => r.id !== id);
+    window.dispatchEvent(new CustomEvent("db:changed", { detail: { key: tabela } }));
+  },
+
   saveCadastro(cadastro) {
     if (this.mode === "firebase") {
       this._firestore.collection("cadastros").doc(cadastro.id).set(cadastro)
@@ -261,6 +276,7 @@ const DB = {
     }
     if (this.mode === "supabase") {
       this._supabaseUpsert("cadastros", cadastro); // implementado em js/supabase-config.js
+      this._upsertCacheLocal("cadastros", cadastro);
       return cadastro;
     }
     const all = this.getCadastros();
@@ -277,6 +293,7 @@ const DB = {
     }
     if (this.mode === "supabase") {
       this._supabaseUpsert("inspecoes", inspecao);
+      this._upsertCacheLocal("inspecoes", inspecao);
       return inspecao;
     }
     const all = this.getInspecoes();
@@ -387,6 +404,7 @@ const DB = {
     }
     if (this.mode === "supabase") {
       this._supabaseUpsert("ordens", ordem);
+      this._upsertCacheLocal("ordens", ordem);
       return ordem;
     }
     const all = this.getOrdens();
@@ -408,6 +426,7 @@ const DB = {
       this._sb.from("cadastros").delete().eq("id", cadastroId).then(({ error }) => {
         if (error) console.error("Erro ao excluir cadastro:", error);
       });
+      this._removerCacheLocal("cadastros", cadastroId);
       return;
     }
     this._write("cadastros", this.getCadastros().filter(c => c.id !== cadastroId));
@@ -423,6 +442,7 @@ const DB = {
       this._sb.from("inspecoes").delete().eq("id", inspecaoId).then(({ error }) => {
         if (error) console.error("Erro ao excluir inspeção:", error);
       });
+      this._removerCacheLocal("inspecoes", inspecaoId);
       return;
     }
     this._write("inspecoes", this.getInspecoes().filter(i => i.id !== inspecaoId));
@@ -438,6 +458,7 @@ const DB = {
       this._sb.from("ordens").delete().eq("id", ordemId).then(({ error }) => {
         if (error) console.error("Erro ao excluir ordem de inspeção:", error);
       });
+      this._removerCacheLocal("ordens", ordemId);
       return;
     }
     this._write("ordens", this.getOrdens().filter(o => o.id !== ordemId));
@@ -452,7 +473,9 @@ const DB = {
     if (this.mode === "supabase") {
       const atual = this._cache.fiscais.find(f => f.id === fiscalId);
       if (!atual) return false;
-      this._supabaseUpsert("fiscais", { ...atual, senha: novaSenha });
+      const atualizado = { ...atual, senha: novaSenha };
+      this._supabaseUpsert("fiscais", atualizado);
+      this._upsertCacheLocal("fiscais", atualizado);
       return true;
     }
     const fiscais = this.getFiscais();
@@ -472,6 +495,7 @@ const DB = {
     }
     if (this.mode === "supabase") {
       this._supabaseUpsert("fiscais", user);
+      this._upsertCacheLocal("fiscais", user);
       return user;
     }
     const all = this.getFiscais();
@@ -491,6 +515,7 @@ const DB = {
       this._sb.from("fiscais").delete().eq("id", userId).then(({ error }) => {
         if (error) console.error("Erro ao excluir usuário:", error);
       });
+      this._removerCacheLocal("fiscais", userId);
       return;
     }
     this._write("fiscais", this.getFiscais().filter(f => f.id !== userId));
