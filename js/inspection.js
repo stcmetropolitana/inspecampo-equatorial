@@ -21,6 +21,7 @@ const InspectionPage = {
       id: Utils.uid("insp"),
       cadastroId: "",
       dataInspecao: new Date().toISOString().slice(0, 10),
+      colaboradoresSelecionados: [],
       epiPorColaborador: [],
       epc: { itens: this.makeChecklist(EPC_ITEMS) }
     };
@@ -33,6 +34,7 @@ const InspectionPage = {
     const cad = DB.getCadastros().find(c => c.id === cadastroId);
     this.activeColabTab = 0;
     this.state.epiPorColaborador = cad ? cad.colaboradores.map(() => ({ itens: this.makeChecklist(EPI_ITEMS) })) : [];
+    this.state.colaboradoresSelecionados = cad ? cad.colaboradores.map((_, i) => i) : [];
   },
 
   render(container) {
@@ -83,6 +85,7 @@ const InspectionPage = {
           const cad = cadastros.find(c => c.id === sel.value);
           this.activeColabTab = 0;
           s.epiPorColaborador = cad ? cad.colaboradores.map(() => ({ itens: this.makeChecklist(EPI_ITEMS) })) : [];
+          s.colaboradoresSelecionados = cad ? cad.colaboradores.map((_, i) => i) : [];
           this.render(container);
         });
         return sel;
@@ -109,28 +112,52 @@ const InspectionPage = {
       return;
     }
 
-    // ---------- Seção 2 — Checklist de EPIs por eletricista ----------
-    const secEpi = Utils.el("div", { class: "form-section" });
-    secEpi.appendChild(Utils.el("div", { class: "sec-title" }, [Utils.el("span", { class: "num" }, "2"), "EPIs — Verificação por Eletricista"]));
-
-    const epiTabs = Utils.el("div", { class: "gallery-tabs" });
+    // ---------- Seção 2 — Quais eletricistas serão inspecionados ----------
+    const secSelecao = Utils.el("div", { class: "form-section" });
+    secSelecao.appendChild(Utils.el("div", { class: "sec-title" }, [Utils.el("span", { class: "num" }, "2"), "Quais Eletricistas Você Vai Inspecionar?"]));
+    secSelecao.appendChild(Utils.el("p", { class: "text-muted", style: "margin-bottom:10px;font-size:.85rem;" }, "Não é obrigatório inspecionar todos os eletricistas cadastrados nessa equipe — marque só quem você vai vistoriar agora."));
+    const selecaoWrap = Utils.el("div", { class: "radio-group" });
     cadastroAtivo.colaboradores.forEach((c, idx) => {
-      const tab = Utils.el("button", {
-        type: "button", class: "gallery-tab" + (this.activeColabTab === idx ? " active" : ""),
-        onclick: () => { this.activeColabTab = idx; this.render(container); }
-      }, c.nome.trim() || `Colaborador ${idx + 1}`);
-      epiTabs.appendChild(tab);
+      const marcado = s.colaboradoresSelecionados.includes(idx);
+      const chip = Utils.el("label", { class: "radio-chip" + (marcado ? " checked" : "") }, [
+        Utils.el("input", { type: "checkbox", ...(marcado ? { checked: "checked" } : {}) }),
+        c.nome.trim() || `Colaborador ${idx + 1}`
+      ]);
+      chip.querySelector("input").addEventListener("change", (e) => {
+        if (e.target.checked) { if (!s.colaboradoresSelecionados.includes(idx)) s.colaboradoresSelecionados.push(idx); }
+        else s.colaboradoresSelecionados = s.colaboradoresSelecionados.filter(i => i !== idx);
+        this.render(container);
+      });
+      selecaoWrap.appendChild(chip);
     });
-    secEpi.appendChild(epiTabs);
+    secSelecao.appendChild(selecaoWrap);
+    wrap.appendChild(secSelecao);
 
-    if (this.activeColabTab >= cadastroAtivo.colaboradores.length) this.activeColabTab = 0;
-    if (!s.epiPorColaborador[this.activeColabTab]) s.epiPorColaborador[this.activeColabTab] = { itens: this.makeChecklist(EPI_ITEMS) };
-    secEpi.appendChild(this.renderChecklistTable(s.epiPorColaborador[this.activeColabTab].itens, container));
-    wrap.appendChild(secEpi);
+    // ---------- Seção 3 — Checklist de EPIs por eletricista selecionado ----------
+    if (s.colaboradoresSelecionados.length > 0) {
+      const secEpi = Utils.el("div", { class: "form-section" });
+      secEpi.appendChild(Utils.el("div", { class: "sec-title" }, [Utils.el("span", { class: "num" }, "3"), "EPIs — Verificação por Eletricista"]));
 
-    // ---------- Seção 3 — Checklist de EPCs do veículo ----------
+      const epiTabs = Utils.el("div", { class: "gallery-tabs" });
+      cadastroAtivo.colaboradores.forEach((c, idx) => {
+        if (!s.colaboradoresSelecionados.includes(idx)) return;
+        const tab = Utils.el("button", {
+          type: "button", class: "gallery-tab" + (this.activeColabTab === idx ? " active" : ""),
+          onclick: () => { this.activeColabTab = idx; this.render(container); }
+        }, c.nome.trim() || `Colaborador ${idx + 1}`);
+        epiTabs.appendChild(tab);
+      });
+      secEpi.appendChild(epiTabs);
+
+      if (!s.colaboradoresSelecionados.includes(this.activeColabTab)) this.activeColabTab = s.colaboradoresSelecionados[0];
+      if (!s.epiPorColaborador[this.activeColabTab]) s.epiPorColaborador[this.activeColabTab] = { itens: this.makeChecklist(EPI_ITEMS) };
+      secEpi.appendChild(this.renderChecklistTable(s.epiPorColaborador[this.activeColabTab].itens, container));
+      wrap.appendChild(secEpi);
+    }
+
+    // ---------- Seção 4 — Checklist de EPCs do veículo ----------
     const secEpc = Utils.el("div", { class: "form-section" });
-    secEpc.appendChild(Utils.el("div", { class: "sec-title" }, [Utils.el("span", { class: "num" }, "3"), "EPCs — Verificação do Veículo"]));
+    secEpc.appendChild(Utils.el("div", { class: "sec-title" }, [Utils.el("span", { class: "num" }, "4"), "EPCs — Verificação do Veículo"]));
     secEpc.appendChild(this.renderChecklistTable(s.epc.itens, container));
     wrap.appendChild(secEpc);
 
@@ -223,10 +250,12 @@ const InspectionPage = {
 
     if (!s.dataInspecao) missing.push("Data da inspeção");
     if (!cadastro) missing.push("Equipe (prefixo)");
+    if (!s.colaboradoresSelecionados.length) missing.push("Selecione ao menos um eletricista para inspecionar");
 
-    s.epiPorColaborador.forEach((checklist, idx) => {
+    s.colaboradoresSelecionados.forEach(idx => {
+      const checklist = s.epiPorColaborador[idx];
       const nomeColab = cadastro.colaboradores[idx]?.nome.trim() || `Colaborador ${idx + 1}`;
-      if (checklist.itens.some(item => !item.estado)) missing.push(`Checklist de EPIs de ${nomeColab} — informe a situação de todos os itens`);
+      if (!checklist || checklist.itens.some(item => !item.estado)) missing.push(`Checklist de EPIs de ${nomeColab} — informe a situação de todos os itens`);
     });
     if (s.epc.itens.some(item => !item.estado)) missing.push("Checklist de EPCs do veículo — informe a situação de todos os itens");
 
@@ -250,8 +279,8 @@ const InspectionPage = {
       colaboradores: cadastro.colaboradores,
       dataInspecao: s.dataInspecao,
       dataHoraISO: Utils.nowISO(),
-      epiPorColaborador: cadastro.colaboradores.map((c, idx) => ({
-        colaborador: c.nome, itens: s.epiPorColaborador[idx].itens
+      epiPorColaborador: s.colaboradoresSelecionados.map(idx => ({
+        colaborador: cadastro.colaboradores[idx]?.nome || `Colaborador ${idx + 1}`, itens: s.epiPorColaborador[idx].itens
       })),
       epc: s.epc,
       status: "concluida"

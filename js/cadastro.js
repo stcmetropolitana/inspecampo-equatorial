@@ -25,7 +25,7 @@ const CadastroPage = {
         fotos: { frente: null, traseira: null, lateral: null, placa: null, documento: null }
       },
       comunicacao: { tipo: "", numeroSerie: "", foto: null, dispositivo: "", fotoDispositivo: null },
-      colaboradores: [{ nome: "", matricula: "", funcao: "", foto: null }, { nome: "", matricula: "", funcao: "", foto: null }],
+      colaboradores: [{ nome: "", matricula: "", funcao: "", foto: null }],
       fotoEquipe: null
     };
   },
@@ -220,7 +220,7 @@ const CadastroPage = {
         s.colaboradores.push({ nome: "", matricula: "", funcao: "", foto: null });
         this.renderColaboradores(colabWrap, container);
       }
-    }, [Utils.el("i", { class: "fa-solid fa-plus" }), " Adicionar colaborador"]);
+    }, [Utils.el("i", { class: "fa-solid fa-plus" }), " Adicionar colaborador (opcional)"]);
     secEq.appendChild(addBtn);
 
     const photoGridEq = Utils.el("div", { class: "photo-upload-grid mt-8" });
@@ -246,7 +246,7 @@ const CadastroPage = {
     colabWrap.innerHTML = "";
     s.colaboradores.forEach((c, idx) => {
       const card = Utils.el("div", { class: "colaborador-card" });
-      if (s.colaboradores.length > 2) {
+      if (s.colaboradores.length > 1) {
         card.appendChild(Utils.el("button", {
           class: "remove-colab", type: "button",
           onclick: () => { s.colaboradores.splice(idx, 1); this.renderColaboradores(colabWrap, container); }
@@ -254,7 +254,7 @@ const CadastroPage = {
       }
       const g = Utils.el("div", { class: "form-grid" });
       g.appendChild(Utils.el("div", { class: "field" }, [
-        Utils.el("label", {}, `Colaborador ${idx + 1} — Nome *`),
+        Utils.el("label", {}, idx === 0 ? "Colaborador 1 — Nome *" : `Colaborador ${idx + 1} (opcional) — Nome *`),
         Utils.el("input", { type: "text", value: c.nome, oninput: (e) => c.nome = e.target.value })
       ]));
       g.appendChild(Utils.el("div", { class: "field" }, [
@@ -326,7 +326,7 @@ const CadastroPage = {
     if (!s.comunicacao.foto) missing.push("Foto do equipamento de comunicação");
     if (!s.comunicacao.dispositivo) missing.push("Dispositivo utilizado (Tablet/Celular)");
     if (!s.comunicacao.fotoDispositivo) missing.push("Foto do dispositivo (Tablet/Celular)");
-    if (s.colaboradores.length < 2) missing.push("Ao menos 2 colaboradores");
+    if (s.colaboradores.length < 1) missing.push("Ao menos 1 colaborador");
     s.colaboradores.forEach((c, i) => {
       if (!c.nome.trim() || !c.matricula.trim() || !c.funcao.trim()) missing.push(`Dados completos do colaborador ${i + 1}`);
       if (!c.foto) missing.push(`Foto do colaborador ${i + 1}`);
@@ -362,5 +362,87 @@ const CadastroPage = {
     Utils.toast("Equipe cadastrada com sucesso!");
     this.reset();
     this.render(container);
+  },
+
+  /**
+   * Modal rápido para adicionar/remover/editar os eletricistas de um
+   * cadastro JÁ SALVO — usado pelo fiscal (Painel do Fiscal) e por
+   * líder/admin (Painel do Líder), sem precisar reabrir o formulário todo.
+   */
+  abrirGerenciarEletricistas(cadastro, container, onSalvo) {
+    const colaboradores = cadastro.colaboradores.map(c => ({ ...c })); // edição isolada — só aplica ao salvar
+
+    const overlay = Utils.el("div", { class: "modal-overlay" });
+    const box = Utils.el("div", { class: "modal-box" });
+    box.appendChild(Utils.el("div", { class: "modal-head" }, [
+      Utils.el("h3", {}, `Gerenciar Eletricistas — ${cadastro.prefixo}`),
+      Utils.el("button", { class: "modal-close", onclick: () => overlay.remove() }, [Utils.el("i", { class: "fa-solid fa-xmark" })])
+    ]));
+    const body = Utils.el("div", { class: "modal-body" });
+    box.appendChild(body);
+
+    const desenhar = () => {
+      body.innerHTML = "";
+      colaboradores.forEach((c, idx) => {
+        const card = Utils.el("div", { class: "colaborador-card" });
+        if (colaboradores.length > 1) {
+          card.appendChild(Utils.el("button", {
+            class: "remove-colab", type: "button",
+            onclick: () => { colaboradores.splice(idx, 1); desenhar(); }
+          }, [Utils.el("i", { class: "fa-solid fa-xmark" })]));
+        }
+        const g = Utils.el("div", { class: "form-grid" });
+        g.appendChild(Utils.el("div", { class: "field" }, [
+          Utils.el("label", {}, idx === 0 ? "Colaborador 1 — Nome *" : `Colaborador ${idx + 1} (opcional) — Nome *`),
+          Utils.el("input", { type: "text", value: c.nome, oninput: (e) => c.nome = e.target.value })
+        ]));
+        g.appendChild(Utils.el("div", { class: "field" }, [
+          Utils.el("label", {}, "Matrícula *"),
+          Utils.el("input", { type: "text", value: c.matricula, oninput: (e) => c.matricula = e.target.value })
+        ]));
+        g.appendChild(Utils.el("div", { class: "field" }, [
+          Utils.el("label", {}, "Função *"),
+          Utils.el("input", { type: "text", placeholder: "Ex: Eletricista, Motorista…", value: c.funcao, oninput: (e) => c.funcao = e.target.value })
+        ]));
+        card.appendChild(g);
+        const photoGridColab = Utils.el("div", { class: "photo-upload-grid mt-8" });
+        photoGridColab.appendChild(this.photoSlot("Foto do colaborador", c, "foto", container, desenhar));
+        card.appendChild(photoGridColab);
+        body.appendChild(card);
+      });
+
+      body.appendChild(Utils.el("button", {
+        type: "button", class: "btn btn-ghost btn-sm mt-8",
+        onclick: () => {
+          if (colaboradores.length >= 3) { Utils.toast("Máximo de 3 colaboradores por equipe.", "warning"); return; }
+          colaboradores.push({ nome: "", matricula: "", funcao: "", foto: null });
+          desenhar();
+        }
+      }, [Utils.el("i", { class: "fa-solid fa-plus" }), " Adicionar colaborador (opcional)"]));
+
+      body.appendChild(Utils.el("div", { class: "flex gap-8", style: "justify-content:flex-end;margin-top:16px;" }, [
+        Utils.el("button", {
+          type: "button", class: "btn btn-primary",
+          onclick: () => {
+            const missing = [];
+            colaboradores.forEach((c, i) => {
+              if (!c.nome.trim() || !c.matricula.trim() || !c.funcao.trim()) missing.push(`Dados completos do colaborador ${i + 1}`);
+              if (!c.foto) missing.push(`Foto do colaborador ${i + 1}`);
+            });
+            if (missing.length) { Utils.error("Campos obrigatórios", "Preencha: " + [...new Set(missing)].join(", ")); return; }
+
+            const salvo = DB.saveCadastro({ ...cadastro, colaboradores });
+            if (!salvo) return;
+            Utils.toast("Eletricistas atualizados com sucesso!");
+            overlay.remove();
+            if (onSalvo) onSalvo();
+          }
+        }, [Utils.el("i", { class: "fa-solid fa-check" }), " Salvar"])
+      ]));
+    };
+
+    desenhar();
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
   }
 };

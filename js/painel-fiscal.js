@@ -96,8 +96,12 @@ const FiscalPanelPage = {
             Utils.el("td", {}, c.municipio),
             Utils.el("td", { class: "mono" }, Utils.formatDateTime(c.dataHoraISO)),
             Utils.el("td", {}, [vistoriada ? Utils.el("span", { class: "badge badge-success" }, "Vistoriada") : Utils.el("span", { class: "badge badge-warning" }, "Pendente")]),
-            Utils.el("td", { class: "flex gap-8" }, [
+            Utils.el("td", { class: "flex gap-8", style: "flex-wrap:wrap;" }, [
               Utils.el("button", { class: "btn btn-ghost btn-sm", onclick: () => LiderPage.openCadastroDetail(c, DB.getInspecoes().filter(i => i.cadastroId === c.id)) }, [Utils.el("i", { class: "fa-solid fa-eye" }), " Ver"]),
+              Utils.el("button", {
+                class: "btn btn-secondary btn-sm",
+                onclick: () => CadastroPage.abrirGerenciarEletricistas(c, container, () => this.render(container))
+              }, [Utils.el("i", { class: "fa-solid fa-users-gear" }), " Eletricistas"]),
               Utils.el("button", {
                 class: "btn btn-secondary btn-sm",
                 onclick: () => { InspectionPage.startFor(c.id); Router.go("inspecao"); }
