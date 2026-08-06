@@ -252,13 +252,6 @@ const InspectionPage = {
     if (!cadastro) missing.push("Equipe (prefixo)");
     if (!s.colaboradoresSelecionados.length) missing.push("Selecione ao menos um eletricista para inspecionar");
 
-    s.colaboradoresSelecionados.forEach(idx => {
-      const checklist = s.epiPorColaborador[idx];
-      const nomeColab = cadastro.colaboradores[idx]?.nome.trim() || `Colaborador ${idx + 1}`;
-      if (!checklist || checklist.itens.some(item => !item.estado)) missing.push(`Checklist de EPIs de ${nomeColab} — informe a situação de todos os itens`);
-    });
-    if (s.epc.itens.some(item => !item.estado)) missing.push("Checklist de EPCs do veículo — informe a situação de todos os itens");
-
     if (missing.length) {
       Utils.error("Não é possível finalizar a inspeção", "Campos pendentes:\n\n• " + [...new Set(missing)].join("\n• "));
       return;

@@ -145,7 +145,7 @@ const HistoryPage = {
               ? Utils.el("span", { class: "badge badge-danger" }, "Danificado")
               : item.estado === "de_acordo"
                 ? Utils.el("span", { class: "badge badge-success" }, "De acordo")
-                : Utils.el("span", { class: "badge badge-warning" }, "—")
+                : Utils.el("span", { class: "badge badge-warning" }, "Não avaliado")
           ]),
           Utils.el("td", {}, item.foto ? [Utils.el("img", { src: item.foto, style: "width:36px;height:36px;object-fit:cover;border-radius:6px;cursor:pointer;", onclick: () => Gallery.lightbox(item.foto) })] : "—"),
           this.resolucaoCell(insp, item)

@@ -64,15 +64,16 @@ create table ordens (
 
 Cada tabela tem só duas colunas: um `id` (texto) e um `data` (jsonb, que
 guarda o objeto inteiro do cadastro/inspeção/usuário/registro de produção/
-ordem de inspeção). Isso mantém o banco simples e evita ter que alterar o
-SQL toda vez que um campo novo é adicionado a algum formulário do app.
+ordem de inspeção). Isso mantém o banco simples e
+evita ter que alterar o SQL toda vez que um campo novo é adicionado a
+algum formulário do app.
 
 ---
 
 ## Passo 3 — Ativar o Realtime nas 5 tabelas
 
-1. No menu à esquerda, clique em **"Database"** → **"Replication"**.
-2. Em **"Source"**, clique para expandir a lista de tabelas.
+1. No menu à esquerda, dentro de "DATABASE MANAGEMENT", clique em **"Publications"**.
+2. Clique em **"supabase_realtime"**.
 3. Ative (toggle ON) as 5 tabelas: `fiscais`, `cadastros`, `inspecoes`, `producao`, `ordens`.
 
 Isso é o que permite que o navegador de uma pessoa "escute" mudanças
@@ -85,7 +86,7 @@ feitas por outra pessoa, em tempo real.
 Por padrão, o Supabase bloqueia todo acesso às tabelas até você criar uma
 política. Como este app não usa o sistema de login do Supabase (a
 autenticação é feita manualmente, por matrícula/senha, dentro do próprio
-app), vamos liberar o acesso público às 3 tabelas.
+app), vamos liberar o acesso público às 5 tabelas.
 
 Volte ao **"SQL Editor"** → **"New query"** e rode:
 
@@ -110,6 +111,7 @@ create policy "Acesso público - producao" on producao
 
 create policy "Acesso público - ordens" on ordens
   for all using (true) with check (true);
+
 ```
 
 > ⚠️ Assim como no Firebase, isso deixa o banco aberto para qualquer
